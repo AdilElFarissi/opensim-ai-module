@@ -1,4 +1,4 @@
-# OpenSim AI Integration Module
+# OpenSim AI Integration Module v0.1
 
 This module seamlessly transforms standard viewer public/private chats and classic NPCs into advanced, interactive AI clients. By leveraging the [OpenRouter](https://openrouter.ai/) API and its extensive ecosystem of services, it bridges the gap between virtual worlds and modern generative AI models. Whether you want to provide helpful automated assistants for your grid's residents or deploy dynamic, domain-specific smart characters, this module delivers a robust, scalable, and highly customizable solution.
 
