@@ -111,7 +111,7 @@ key npc = osCreateSmartNPC(string firstName, string lastName, vector position, s
 * `string lastName`: The SmartNPC's last name.
 * `vector position`: The region coordinates where the SmartNPC will spawn.
 * `string notecardName`: The name of the appearance notecard to apply to the SmartNPC.
-* `string expertise`: The specialization field for the SmartNPC (leave as an empty string `""` for default behavior).
+* `string expertise`: The specialization field of the SmartNPC (leave as an empty string `""` for default behavior).
 
 **Available Expertise Profiles:**
 * `default`: Generalist AI, highly proficient in OpenSim matters (similar to the default Assistant).
@@ -210,6 +210,7 @@ default {
                 llListenRemove(listener);
             } else {
                 osSetSmartNPC(npc, msg);
+				llListenRemove(listener);
             }
         }
     }
@@ -296,7 +297,7 @@ FallbackModelName = "deepseek/deepseek-v4-flash"
 
 ## What Next?
 
-### 1. Developer Motivation vs. Community "Generosity"
+### Developer Motivation vs. Community "Generosity"
 The next depend entirely on the legendary generosity of the Hypergrid communities and their profound love for developers. Mathematically speaking, we are looking at `llAbs(0);`. 
 So, please, take a long look in the mirror before opening an issue to spam your *"I want this, I want that..."* feature requests. You are dealing with someone whose current `motivation level` about OpenSim thingies is sitting comfortably at `-1`.
 
