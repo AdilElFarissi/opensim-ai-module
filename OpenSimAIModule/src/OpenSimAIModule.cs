@@ -297,7 +297,7 @@ namespace OpenSim.Region.OptionalModules.AI
                             await Task.Delay(300);
                         }
 
-                        if (m_isMonetized && !isEstateOwner && blocks.Count != 0)
+                        if (m_isMonetized && !isEstateOwner && blocks.Count != 0 && !blocks[0].Contains("The AI service is temporarily cooling down."))
                             m_money?.ApplyCharge(client.AgentId, m_pricePerRequest, MoneyTransactionType.Gift);
                     }
                     catch (Exception ex)
