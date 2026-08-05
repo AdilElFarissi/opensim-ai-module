@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8" ?>
+  <Project name="OpenSim.Region.OptionalModules.AI" 
+           path="addon-modules/OpenSimAIModule" 
+           type="Library" 
+           frameworkVersion="v8_0" 
+           language="C#">
+    
+    <Configuration name="Debug">
+      <Options>
+        <CompilerDefines>TRACE;DEBUG;NETCOREAPP;NET8_0</CompilerDefines>
+        <OptimizeCode>false</OptimizeCode>
+        <OutputPath>../../bin/</OutputPath> 
+        <DebugInformation>true</DebugInformation>
+      </Options>
+    </Configuration>
+    
+    <Configuration name="Release">
+      <Options>
+        <CompilerDefines>TRACE;NETCOREAPP;NET8_0</CompilerDefines>
+        <OptimizeCode>true</OptimizeCode>
+        <OutputPath>../../bin/</OutputPath>
+        <DebugInformation>false</DebugInformation>
+      </Options>
+    </Configuration>
+	
+	  <ReferencePath>../../bin/</ReferencePath>
+    <Reference name="log4net" path="../../bin/" />
+    <Reference name="Nini.dll" path="../../bin/"/>
+    <Reference name="log4net.dll" path="../../bin/"/>
+    <Reference name="Mono.Addins.dll" path="../../bin/"/>
+    <Reference name="OpenMetaverse.dll" path="../../bin/"/>
+    <Reference name="OpenMetaverse.StructuredData.dll" path="../../bin/"/>
+    <Reference name="OpenMetaverseTypes.dll" path="../../bin/"/>
+    <Reference name="OpenSim.Framework" />
+    <Reference name="OpenSim.Region.Framework" path="../../bin/"/>
+    <Reference name="OpenSim.Region.ScriptEngine.Shared" path="../../bin/"/>
+    <Reference name="OpenSim.Region.ScriptEngine.Shared.Api" path="../../bin/"/>
+
+    <Files>
+      <Match pattern="src/*.cs" recurse="true"/>
+    </Files>
+  </Project>
+

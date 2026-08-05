@@ -1,0 +1,7 @@
+- Name: OpenSim.Region.OptionalModules.AI.dll
+- size: 57344 octets (56 KiB)
+- CRC32: A79763CD
+- CRC64: 70E54094EDFF9A68
+- SHA256: 5c573af39719965f6fe0f47ccc05cb22bfca10494211cfc3a8fa3d4b33a2e891
+- SHA1: 5f8b272f5453c03a327f7ea67b2655a5b11aceed
+- BLAKE2sp: 8083e80c0ffaa65edf7ec628a8f17eecbc15bf4db4fdff92235f891a93411c92
