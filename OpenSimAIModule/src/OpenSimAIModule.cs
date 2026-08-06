@@ -62,6 +62,7 @@ namespace OpenSim.Region.OptionalModules.AI
         private bool m_isMonetized = false;
         private int m_pricePerRequest = 0;
         private bool m_isPrivate = true;
+        private UUID m_bankerUuid = UUID.Zero;
         
         private IScriptModuleComms m_scriptComms;
         private IMessageTransferModule m_msgTransferModule;
@@ -105,6 +106,12 @@ namespace OpenSim.Region.OptionalModules.AI
             m_isMonetized = config.GetBoolean("EnableMonetization", false);
             m_pricePerRequest = config.GetInt("PricePerRequest", 0);
             m_isPrivate = config.GetBoolean("IsPrivate", true);
+
+            string bankerUuidStr = config.GetString("BankerUUID", UUID.ZeroString);
+            if(bankerUuidStr == UUID.ZeroString || !UUID.TryParse(bankerUuidStr, out m_bankerUuid))
+            {
+                m_isMonetized = false;
+            }
 
             m_httpClient.Timeout = TimeSpan.FromSeconds(300);
             m_httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {m_apiKey}");
@@ -298,7 +305,7 @@ namespace OpenSim.Region.OptionalModules.AI
                         }
 
                         if (m_isMonetized && !isEstateOwner && blocks.Count > 0 && !aiResponse.Contains("The AI service is temporarily cooling down."))
-                            m_money?.ApplyCharge(client.AgentId, m_pricePerRequest, MoneyTransactionType.Gift);
+                            m_money?.MoveMoney(senderUuid, m_bankerUuid, m_pricePerRequest, "AI Service Request Fee");
                     }
                     catch (Exception ex)
                     {
