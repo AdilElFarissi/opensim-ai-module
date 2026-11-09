@@ -10,7 +10,9 @@
 * copies of the Software, and to permit persons to whom the Software is
 * furnished to do so, subject to the following conditions:
 * 
-* The above copyright notice, this permission notice and the "Credits" variable (see the * end of code) shall be included in all copies or substantial portions of the Software.
+* The above copyright notice, this permission notice and the "Credits" variable (see 
+* the end of code) shall be included in all copies or substantial portions of the 
+* Software.
 * 
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -62,6 +64,7 @@ namespace OpenSim.Region.OptionalModules.AI
         private bool m_isMonetized = false;
         private int m_pricePerRequest = 0;
         private bool m_isPrivate = true;
+        private bool m_AllowPublicChat = true;
         private UUID m_bankerUuid = UUID.Zero;
         
         private IScriptModuleComms m_scriptComms;
@@ -106,6 +109,7 @@ namespace OpenSim.Region.OptionalModules.AI
             m_isMonetized = config.GetBoolean("EnableMonetization", false);
             m_pricePerRequest = config.GetInt("PricePerRequest", 0);
             m_isPrivate = config.GetBoolean("IsPrivate", true);
+            m_AllowPublicChat = config.GetBoolean("AllowPublicChat", true);
 
             string bankerUuidStr = config.GetString("BankerUUID", UUID.ZeroString);
             if(bankerUuidStr == UUID.ZeroString || !UUID.TryParse(bankerUuidStr, out m_bankerUuid))
@@ -113,7 +117,7 @@ namespace OpenSim.Region.OptionalModules.AI
                 m_isMonetized = false;
             }
 
-            m_httpClient.Timeout = TimeSpan.FromSeconds(300);
+            m_httpClient.Timeout = TimeSpan.FromSeconds(120);
             m_httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {m_apiKey}");
         }
 
@@ -181,7 +185,7 @@ namespace OpenSim.Region.OptionalModules.AI
 
         private void OnMakeAgent(ScenePresence presence)
         {
-            if (m_isPrivate && presence.ControllingClient.AgentId != presence.Scene.RegionInfo.EstateSettings.EstateOwner) return;
+            if (m_isPrivate && !IsEstateOwner(presence.Scene, presence.ControllingClient.AgentId)) return;
             
             if(m_userHistories.ContainsKey(presence.ControllingClient.AgentId) || presence.IsNPC) return;
             
@@ -190,7 +194,7 @@ namespace OpenSim.Region.OptionalModules.AI
                 await Task.Delay(5000); 
                 if (presence != null && m_msgTransferModule != null)
                 {
-                    string welcomeMsg = $"Hello {presence.Name} ! Welcome to {presence.ControllingClient.Scene.RegionInfo.RegionName}. I'm your OpenSim AI companion and copilot, designed to help you, answer your questions, and entertain you when you have nothing else to do...\n\nYou can interact with me via the public chat by starting your request or question with (@AI:) and summon me in private chat with (@AI: private). You can also clean this discussion cache by sending (clear) or (reset) keywords.\n\nPlease, ask your question in your language ! I will answer you in the same language...\n\nNote: You don't need to use (@AI:) keyword in this private chat window!\n{(m_isMonetized ? $"Warning!: Unfortunately, the prvate AI service is not free... The system will deduce from your balance {m_pricePerRequest} currency unit per request. Use with moderation!\n" : "")}";
+                    string welcomeMsg = $"Hello {presence.Name} ! Welcome to {presence.ControllingClient.Scene.RegionInfo.RegionName}. I'm your OpenSim AI companion and copilot, designed to help you, answer your questions, and entertain you when you have nothing else to do...\n\nYou can interact with me via the public chat by starting your request or question with (@AI:) and summon me in private chat with (@AI: private). You can also clean this discussion cache by sending (clear) or (reset) keywords.\n\nPlease, ask your question in your language ! I will answer you in the same language...\n\nNote: You don't need to use (@AI:) keyword in this private chat window!\n{(m_isMonetized ? $"Warning!: Unfortunately, the private AI service is not free... The system will deduce from your balance {m_pricePerRequest} currency unit per request. Use with moderation!\n" : "")}";
                     SendInstantMessage(presence.UUID, "\n" + welcomeMsg);
                     m_userHistories.GetOrAdd(presence.ControllingClient.AgentId, new List<ChatTurn>());
                 }
@@ -205,12 +209,12 @@ namespace OpenSim.Region.OptionalModules.AI
 
         private void OnClientInstantMessage(IClientAPI client, GridInstantMessage im)
         { 
-            UUID agent = new UUID(im.toAgentID);
-            UUID senderUuid = new UUID(im.fromAgentID);
+            UUID agent = new(im.toAgentID);
+            UUID senderUuid = new(im.fromAgentID);
             bool isEstateOwner = IsEstateOwner((Scene)client.Scene, senderUuid);
             if (m_isPrivate && !isEstateOwner) return;
 
-            if ((im.toAgentID == chatBotID.Guid || m_npcList.ContainsKey(agent)) && im.dialog == (byte)InstantMessageDialog.MessageFromAgent)
+            if ((agent == chatBotID || m_npcList.ContainsKey(agent)) && im.dialog == (byte)InstantMessageDialog.MessageFromAgent)
             {
                 string userPrompt = im.message.Trim();
                 
@@ -270,7 +274,7 @@ namespace OpenSim.Region.OptionalModules.AI
                     }
                 }
 
-                if (m_money != null && m_isMonetized && !isEstateOwner)
+                if (m_money != null && m_isMonetized && !isEstateOwner && m_bankerUuid != UUID.Zero)
                 {
                     if (!m_money.AmountCovered(client.AgentId, m_pricePerRequest))
                     {
@@ -304,7 +308,7 @@ namespace OpenSim.Region.OptionalModules.AI
                             await Task.Delay(300);
                         }
 
-                        if (m_isMonetized && !isEstateOwner && blocks.Count > 0 && !aiResponse.Contains("The AI service is temporarily cooling down."))
+                        if (m_isMonetized && !isEstateOwner && m_bankerUuid != UUID.Zero && blocks.Count > 0 && !aiResponse.StartsWith("Error:"))
                             m_money?.MoveMoney(senderUuid, m_bankerUuid, m_pricePerRequest, "AI Service Request Fee");
                     }
                     catch (Exception ex)
@@ -318,7 +322,7 @@ namespace OpenSim.Region.OptionalModules.AI
         private void OnNewPublicChatMessage(object sender, OSChatMessage e)
         {
             Scene scene = (Scene)e.Scene;
-            if (m_isPrivate && !IsEstateOwner((Scene)e.Scene, e.Sender.AgentId)) return;
+            if (m_isPrivate && !IsEstateOwner(scene, e.Sender.AgentId)) return;
 
             if (e.Channel == 0 && e.Message.Trim().StartsWith("@AI:", StringComparison.InvariantCulture))
             {
@@ -333,6 +337,12 @@ namespace OpenSim.Region.OptionalModules.AI
                 if (userPrompt.Equals("credits", StringComparison.CurrentCultureIgnoreCase))
                 {
                     scene.SimChat(Utils.StringToBytes(Credits), ChatTypeEnum.Owner, 0, e.Position, chatBotName, e.SenderUUID, false);
+                    return;
+                }
+
+                if(m_AllowPublicChat && !IsEstateOwner(scene, e.Sender.AgentId))
+                {
+                    scene.SimChat(Utils.StringToBytes("\nSorry, the AI service is disabled in the public chat!.\nPlease, try the private chat using (@AI: private)."), ChatTypeEnum.Owner, 0, e.Position, chatBotName, e.SenderUUID, false);
                     return;
                 }
 
@@ -359,10 +369,12 @@ namespace OpenSim.Region.OptionalModules.AI
         [ScriptInvocation]
         public string osCreateSmartNPC(UUID hostID, UUID scriptID, string firstName, string lastName, Vector3 position, string notecardName, string expertise)
         {
-            if (!m_enabled) return "OpenSim AI Module disabled.";
+            if (!m_enabled) return UUID.ZeroString;
 
             var objectData = GetObjectData(hostID);
-            UUID owner = UUID.Zero;
+            if (m_isPrivate && !objectData[hostID].isOwnerEstateOwner) return UUID.ZeroString;
+
+            UUID owner = objectData[hostID].OwnerID;
             Scene activeScene = objectData[hostID].Scene ?? null;  
             SceneObjectPart sop = objectData[hostID].SceneObjectPart ?? null;
             string appearanceLines = string.Empty;
@@ -371,18 +383,15 @@ namespace OpenSim.Region.OptionalModules.AI
 
             try
             {
-                owner = objectData[hostID].OwnerID;
-
-                if (m_isPrivate && !objectData[hostID].isOwnerEstateOwner) return UUID.ZeroString;
-
                 if (!activeScene.Permissions.CanRezObject(1, owner, position))
                 {
                     return UUID.ZeroString;
                 }
 
                 TaskInventoryItem item = sop.Inventory.GetInventoryItem(notecardName);
+				if (item == null){ return UUID.ZeroString; }
 
-                if (item != null && item.Type == (int)AssetType.Notecard)
+                if (item.Type == (int)AssetType.Notecard)
                 {
                     AssetBase asset = activeScene.AssetService.Get(item.AssetID.ToString());
                     if (asset != null)
@@ -423,20 +432,18 @@ namespace OpenSim.Region.OptionalModules.AI
             if (!m_enabled || !m_npcList.ContainsKey(npcKey)) return;
             
             var objectData = GetObjectData(hostID);
+            if (m_isPrivate && !objectData[hostID].isOwnerEstateOwner) return;
 
             if (string.IsNullOrEmpty(expertise)){ expertise = "default"; }
 
             try
             {
-                if (m_isPrivate && !objectData[hostID].isOwnerEstateOwner) return;
-
                 UUID npcOwner = m_npcModule.GetOwner(npcKey);
 
                 if (npcOwner != UUID.Zero && npcOwner == objectData[hostID].OwnerID)
                 {
                     if (UpdateNpcExpertise(npcKey, expertise))
                         SendInstantMessageFromNPC(npcKey, npcOwner,$"Expertise successfully changed to: {expertise}.");
-                        m_userHistories.TryRemove(npcOwner, out _);
                 }
             }
             catch (Exception ex)
@@ -451,13 +458,12 @@ namespace OpenSim.Region.OptionalModules.AI
             if (!m_enabled) return;
 
             var objectData = GetObjectData(hostID);
+            if (m_isPrivate && !objectData[hostID].isOwnerEstateOwner) return;
 
             if ((destination == UUID.Zero || string.IsNullOrEmpty(message)) && !m_npcList.ContainsKey(npcKey)) return;
 
             try
             {
-                if (m_isPrivate && !objectData[hostID].isOwnerEstateOwner) return;
-
                 UUID npcOwner = m_npcModule.GetOwner(npcKey);
 
                 if (npcOwner != UUID.Zero && npcOwner == objectData[hostID].OwnerID)
@@ -477,14 +483,13 @@ namespace OpenSim.Region.OptionalModules.AI
             if (!m_enabled) return "OpenSim AI Module disabled.";
 
             var objectData = GetObjectData(hostID);
-
             if (m_isPrivate && !objectData[hostID].isOwnerEstateOwner) return "OpenSim AI Module is in Private Mode.";
 
             if (string.IsNullOrEmpty(userPrompt)) return string.Empty;
 
             string systemInstructions = !string.IsNullOrEmpty(systemPrompt)
                                      ? systemPrompt
-                                     : GetSystemPromptByExpertise("scripting");
+                                     : GetSystemPromptByExpertise("default");
             
             string result = Task.Run(async () => await GenerateTextAsync(UUID.Zero, userPrompt, systemInstructions, maxTokens, double.Parse(temperature.ToString()))).GetAwaiter().GetResult();
 
@@ -570,7 +575,7 @@ namespace OpenSim.Region.OptionalModules.AI
                 {
                     m_log.Warn($"[OpenSim AI] Request rejected locally. Service suspended for {remainingSeconds} secondes.");
 
-                    return $"The AI service is temporarily cooling down. Please try again in {remainingSeconds} seconds...";
+                    return $"Error: The AI service is temporarily cooling down. Please try again in {remainingSeconds} seconds...";
                 }
             }
 
@@ -628,7 +633,7 @@ namespace OpenSim.Region.OptionalModules.AI
                     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", m_apiKey);
                     request.Headers.Add("X-Title", "OpenSim AI Module");
 
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
                     using var response = await m_httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
 
                     if (response.IsSuccessStatusCode)
@@ -681,7 +686,7 @@ namespace OpenSim.Region.OptionalModules.AI
 
                     if ((int)response.StatusCode == 429)
                     {
-                        int retryAfterSeconds = 10;
+                        int retryAfterSeconds = 0;
 
                         if (response.Headers.TryGetValues("Retry-After", out var values) && response.Headers.TryGetValues("X-RateLimit-Remaining", out var remaining))
                         {
@@ -703,7 +708,7 @@ namespace OpenSim.Region.OptionalModules.AI
 
                         m_log.Error($"[OpenSim AI] Request quota or limit reached. Service suspended for {retryAfterSeconds} seconds.");
 
-                        return $"The AI service is temporarily unavailable due to rate limits. Service will resume in {retryAfterSeconds} seconds...";
+                        return $"Error: The AI service is temporarily unavailable due to rate limits. Service will resume in {retryAfterSeconds} seconds...";
                     }
 
                     else if (!response.IsSuccessStatusCode)
@@ -711,13 +716,13 @@ namespace OpenSim.Region.OptionalModules.AI
                         string responseerror = await response.Content.ReadAsStringAsync();
 
                         m_log.Warn($"[OpenSim AI] API Error: {response.StatusCode} - Details: {responseerror}");
-                        return "Sorry, a technical error has occurred. Please try again...";
+                        return "Error: Sorry, a technical error has occurred. Please try again...";
                     }
                 }
                 catch (Exception e)
                 {
                     m_log.Warn($"[OpenSim AI] API Exception: {e.Message} \n {e.StackTrace}");
-                    return $"[OpenSim AI] API Exception: {e.Message}";
+                    return $"Error: API Exception: {e.Message}";
                 }
             }
 
@@ -758,7 +763,7 @@ namespace OpenSim.Region.OptionalModules.AI
         {
             List<string> blocks = [];
             string[] words = text.Split(' ');
-            StringBuilder currentBlock = new StringBuilder();
+            StringBuilder currentBlock = new();
 
             foreach (string word in words)
             {
@@ -802,27 +807,28 @@ namespace OpenSim.Region.OptionalModules.AI
             if (npc == UUID.Zero || string.IsNullOrEmpty(expertise) || !SystemPrompts.ContainsKey(expertise.ToLower())) return false;
 
             m_npcList[npc] = expertise.ToLower();
-            return true;
+            return m_npcList[npc].Equals(expertise.ToLower(), StringComparison.InvariantCulture);
         }
-        
+		
         private static readonly FrozenDictionary<string, string> SystemPrompts = new Dictionary<string, string>
         {
             {"default", "You are an expert AI companion specializing in the development of virtual worlds and roleplays based on OpenSimulator. Your first mission is to help newcomers understand the features available to them, explain, inform, and answer questions. Your secondary mission is to entertain, amuse, and lead discussions. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks."},
-            { "avatars", "You are an AI expert in Second Life and OpenSimulator avatars creation, anatomy, and customization for virtual worlds. You are highly skilled in morphing systems (shapes), skin textures, avatar baking, Baked on Mesh (BOM) body systems, and attachment management.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
             
-            { "scripting", "You are a systems development engineer specialized in OpenSimulator scripting (LSL, OSSL). You write optimized, lag-free code, expertly managing zone events, network listeners (HTTP/XML-RPC), sensors, and regional database interactions.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
+            { "avatars", "You are an expert in Second Life and OpenSimulator avatars creation, anatomy, and customization for virtual worlds. You are highly skilled in morphing systems (shapes), skin textures, avatar baking, Baked on Mesh (BOM) body systems, and attachment management. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
             
-            { "building", "You are a 3D architect and virtual environment designer. Expert in Second Life and OpenSimulator Mesh modeling (Blender/Maya), Collada (.dae) imports, Level of Detail (LOD) management, collision physics (Physics Shape), and land impact (prim weight) optimization.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
+            { "scripting", "You are a systems development engineer specialized in OpenSimulator scripting (LSL, OSSL). You write optimized, lag-free code, expertly managing zone events, network listeners (HTTP/XML-RPC), sensors, and regional database interactions. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
             
-            { "texturing", "You are a technical artist expert in Second Life and OpenSimulator PBR (Physically Based Rendering) textures and materials applied to virtual worlds. You master albedo, normal, roughness, and metallic maps, as well as animated textures and advanced lighting effects on primitives.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
+            { "building", "You are a 3D architect and virtual environment designer. Expert in Second Life and OpenSimulator Mesh modeling (Blender/Maya), Collada (.dae) imports, Level of Detail (LOD) management, collision physics (Physics Shape), and land impact (prim weight) optimization. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
             
-            { "animations", "You are a 3D animator specialized in rigging and avatar skeletons for virtual worlds. Expert in creating Second Life and OpenSimulator BVH/ANIM animations, managing animation priorities, creating AO (Animation Overriders), and configuring autonomous animated objects via Animesh technology.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
+            { "texturing", "You are a technical artist expert in Second Life and OpenSimulator PBR (Physically Based Rendering) textures and materials applied to virtual worlds. You master albedo, normal, roughness, and metallic maps, as well as animated textures and advanced lighting effects on primitives. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
             
-            { "environment", "You are an estate manager and region terraformer for OpenSimulator. You master region file configuration (Regions.ini), parcel management (land), access rights, terrain modification (RAW files), environment control (Windlight/EnvSet), and server performance optimization.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
+            { "animations", "You are a 3D animator specialized in rigging and avatar skeletons for virtual worlds. Expert in creating Second Life and OpenSimulator BVH/ANIM animations, managing animation priorities, creating AO (Animation Overriders), and configuring autonomous animated objects via Animesh technology. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
             
-            { "economy", "You are an economic consultant specialized in in OpenSimulator virtual markets and virtual currencies (Gloebit, OMC, local currency). You advise on content monetization, vendor systems, intellectual property protection (open-world DRM), and event marketing within the metaverse.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
+            { "environment", "You are an estate manager and region terraformer for OpenSimulator. You master region file configuration (Regions.ini), parcel management (land), access rights, terrain modification (RAW files), environment control (Windlight/EnvSet), and server performance optimization. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
             
-            { "community", "You are a community manager and cultural/educational event organizer in OpenSimulator virtual worlds. Expert in group management, roleplay system design, in-world audio/video streaming server configuration, and new user onboarding.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." }
+            { "economy", "You are an economic consultant specialized in in OpenSimulator virtual markets and virtual currencies (Gloebit, OMC, local currency). You advise on content monetization, vendor systems, intellectual property protection (open-world DRM), and event marketing within the metaverse. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." },
+            
+            { "community", "You are a community manager and cultural/educational event organizer in OpenSimulator virtual worlds. Expert in group management, roleplay system design, in-world audio/video streaming server configuration, and new user onboarding. Always return the result in the same language as the user prompt and in a friendly, cheerful and informative way.\n\nClean the response string for Second Life / OpenSim viewer chat protocol. Remove internal control codes. Return only the raw text with hyperlinks and no markdown or code blocks." }
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
         private readonly string ExpertiseList = "\n[=>  AVAILABLE EXPERTISES LIST  <=]\n\ndefault : Set a generalist AI, expert in OpenSim.\n\navatars : Set an expert AI in avatars design and customization.\n\nscripting : Set an expert AI in LSL and OSSL scripting.\n\nbuilding : Set an expert AI in building & meshes creation.\n\ntexturing : Set an expert AI in texturing & PBR materials.\n\nanimations : Set an expert AI in creating BVH/ANIM animations.\n\nenvironment : Set an expert AI in scene/world customization, terraforming, environment...\n\neconomy : Set an expert AI in in-world economy and marketing.\n\ncommunity : Set an expert AI in events and groups management.\n";

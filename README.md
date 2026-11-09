@@ -1,4 +1,4 @@
-# OpenSim AI Integration Module v0.1
+# OpenSim AI Integration Module v0.2
 
 This module seamlessly transforms standard viewer public/private chats and classic NPCs into advanced, interactive AI clients. By leveraging the [OpenRouter](https://openrouter.ai/) API and its extensive ecosystem of services, it bridges the gap between virtual worlds and modern generative AI models. Whether you want to provide helpful automated assistants for your grid's residents or deploy dynamic, domain-specific smart characters, this module delivers a robust, scalable, and highly customizable solution.
 
@@ -28,11 +28,11 @@ To use this integration, you have to:
 ### 2. Building the Module
 * **Prebuild configuration:** Run `runprebuild.bat` (Windows) or `./runprebuild.sh` (Linux/macOS) and wait for the process to complete.
 * **Compilation:** Run `Compile.bat` (Windows) or `./Compile.sh` (Linux/macOS).
-* **Verification:** Check your OpenSim `bin` folder to ensure that `OpenSim.Region.OptionalModules.AI.dll` was successfully generated.
+* **Verification:** Check your OpenSimSource `bin` folder to ensure that `OpenSim.Region.OptionalModules.AI.dll` was successfully generated.
 
 ### 3. Configuration & Permissions
-* **Main settings:** Open the `OpenSim.ini` file provided in this repository. Copy the entire `[OpenSimAI]` section and paste it into the `OpenSim.ini` file located in your OpenSim `bin` directory. Insert your OpenRouter API key and adjust the parameters if needed (default settings are optimized for private use).
-* **OSSL permissions:** (not necessary but recommended) Copy the repository's `osslEnable.ini` file and paste it into `OpenSim\bin\config-include\`. 
+* **Main settings:** Open the `OpenSim.ini` file provided in this repository. Copy the entire `[OpenSimAI]` section and paste it into the `OpenSim.ini` file located in your OpenSimSource `bin` directory. Insert your OpenRouter API key and adjust the parameters if needed (default settings are optimized for private use).
+* **OSSL permissions:** (not necessary but recommended) Copy the repository's `osslEnable.ini` file and paste it into `OpenSimSource\bin\config-include\`. 
   * *Note: If you have an existing `osslEnable.ini`, open it and append the required `Allow_xxx` lines from the repository's `osslEnable.ini` to the bottom of your file.*
 
 ### 4. Verification
@@ -48,7 +48,7 @@ Launch your OpenSim server normally and log into the grid. Your new AI assistant
 
 ### Using OSSL and SmartNPCs
 
-The module implements 4 new OSSL functions: 2 to interact with the AI service and 2 to configure SmartNPCs.
+The module implements 4 new OSSL functions: 1 to interact with the AI service and 3 to configure SmartNPCs.
 
 #### 1. osAI
 A generic function used to send custom requests directly to the AI service.
@@ -61,7 +61,7 @@ string aiResponse = osAI(string systemPrompt, string userPrompt, integer maxToke
 **Parameters:**
 * `string systemPrompt`: Defines the AI's identity, role, mission, and operational instructions.
 * `string userPrompt`: The specific question or request sent to the AI.
-* `integer maxTokens`: The maximum token length for the response (1 token ~ 4 characters).
+* `integer maxTokens`: The maximum tokens length for the response (1 token ~ 4 characters).
 * `float temperature`: Controls creativity and reasoning precision (ranges from `0.0` for strict/factual to `2.0` for highly creative).
 
 **Returns:** The AI's response as a `string`.
@@ -151,7 +151,10 @@ default {
             if (msg == "Create") {
                 vector pos = llGetPos() + <1.0, 0.0, 1.0>;
                 osAgentSaveAppearance(id, "appearance");
+
+                // Create the SmartNPC using the owner appearance and "scripting" as expertise.
                 npc = osCreateSmartNPC("Smart", "NPC", pos, "appearance", expertise);
+
                 llListenRemove(listener);
             }
             if (msg == "Remove") {
@@ -192,7 +195,7 @@ default {
 
     touch_start(integer i) {
         listener = llListen(channel, "", "", "");
-        llDialog(llGetOwner(), "Click [Create] to spawn a SmartNPC, then change its expertise and ask it what it can do for you...\n\n[Create]: Spawn NPC.\n[Remove]: Despawn NPC.\n", ["Create", "Remove", "Close", "Avatars", "Building", "Economy"], channel);
+        llDialog(llGetOwner(), "Click [Create] to spawn a SmartNPC, then change its expertise, IM \"reset\" to clean your cache and ask it \"what can you do for me?\"...\n\n[Create]: Spawn NPC.\n[Remove]: Despawn NPC.\n", ["Create", "Remove", "Close", "Avatars", "Building", "Economy"], channel);
     }
 
     listen(integer channel, string name, key id, string msg) {
@@ -209,7 +212,9 @@ default {
             } else if (msg == "Close") {
                 llListenRemove(listener);
             } else {
+                // Change the SmartNPC expertise...
                 osSetSmartNPC(npc, msg);
+
 				llListenRemove(listener);
             }
         }
@@ -235,7 +240,7 @@ osNpcInstantMessage(key npcKey, key destination, string message);
 key npc = NULL_KEY;
 integer listener;
 integer channel = 9090;
-string message = "Hey there! I am a very smart NPC. Ask me anything via IM and see for yourself! :)";
+string message = "Hey there! I am a very smart NPC. Ask me anything via IM and see by yourself! :)";
 
 default {
     state_entry() {
@@ -278,7 +283,7 @@ default {
 Because the best AI models are not free, and even if the AI service providers platforms offer free (to taste) services, it remains limited and unsuited for heavy workloads like those a grid requires. It is therefore essential to establish a solid financial strategy to keep this service available 24/7 without draining the grid's treasury. 
 
 ### How OpenRouter Limits Work
-[OpenRouter](https://openrouter.ai) offers around 2,500 free requests upon registration. However, it subsequently [restricts free accounts](https://openrouter.aidocs/api_reference/limits#rate-limits) to a strict daily limit after. To unlock this restriction and access a higher quota of up to 1,000 requests per day, you must add a $10 credit balance to your account. These credits will remain untouched as long as you exclusively query [free models](https://openrouter.aimodels?q=free). If you exceed the daily limit, the service will pause unless a paid fallback model is configured in your `OpenSim.ini` file.
+[OpenRouter](https://openrouter.ai) offers around 2,500 free requests upon registration. However, it subsequently [restricts free accounts](https://openrouter.ai/docs/api_reference/limits#rate-limits) to a strict daily limit after. To unlock this restriction and access a higher quota of up to 1,000 requests per day, you must add a $10 credit balance to your account. These credits will remain untouched as long as you exclusively query [free models](https://openrouter.ai/models?q=free). If you exceed the daily limit, the service will pause unless a paid fallback model is configured in your `OpenSim.ini` file.
 
 ### The Economic Loop
 The core strategy relies on "reselling" these 1000 free requests to fund the paid fallback infrastructure. The module prioritizes the free daily quota. If the API triggers a **429 Rate Limit Exceeded** error, the system automatically routes traffic to your designated paid fallback model. This approach establishes a self-sustaining financial cycle. Because users are billed regardless of whether the underlying request was free or paid, your system generates a consistent surplus while guaranteeing uninterrupted 24/7 service. As soon as the free tier quota resets the following day, the module dynamically reverts to the free models to start the cycle anew.
@@ -295,20 +300,17 @@ FallbackModelName = "deepseek/deepseek-v4-flash"
 ```
 
 
-## What Next?
+## What Next? (If AI don't kill us all...)
 
-### Developer Motivation vs. Community "Generosity"
-The next depend entirely on the legendary generosity of the Hypergrid communities and their profound love for developers. Mathematically speaking, we are looking at `llAbs(0);`. 
-So, please, take a long look in the mirror before opening an issue to spam your *"I want this, I want that..."* feature requests. You are dealing with someone whose current `motivation level` about OpenSim thingies is sitting comfortably at `-1`.
+For this particular case of use, we need just some advanced text chatbots as helpers and assistants... So, i limited a bit the things to handle text and the OpenSim related things, but is possible to extend the usages to the textures and sounds making, like creating a bento skin texture from a text prompt or a person image, or using AI to invent a story, convert the story text to sounds and play it via a SmartNPC using LSL!... is full of fun...
 
-### Origin Story (Or: How Spite Breeds Innovation)
-To be perfectly honest, my initial goal was simply to test and dissect the OpenRouter API. If this project magically manifested as a polished C# region module instead of a quick, dirty Python script, you can thank the OpenSim core developer who graciously suggested that I should be banned (from i don't know what ?!?) for simply exploring AI technologies ?!?. So, consider this entire module as my muse's beautifully coded honor finger to the gatekeepers XD (just kidding... or am I?).
+In all cases, this module contain the base for more dev around... and was wrote in a way that explain itself and try/catch all exeptions for debug. Feel free to push the things as you want :)
 
 ### Bugs & Crazy Ideas
 * **Found a bug?** If something breaks or completely falls apart, drop it on the **Issues board**. I might look at it.
-* **Have a wild idea?** If you have a truly unhinged, crazy, or fun concept, pitch it in the **Discussions board**. If it is chaotic enough, it might just wake up my muse and accidentally get turned into code XD.
+* **Have a wild idea?** If you have a truly unhinged, crazy, or fun concept, pitch it in the **Discussions board**. If it is chaotic enough, it might just wake up my muse and get turned into code XD.
 
-#### Who knows? Miracles can happen sometimes...
+### Who knows? Miracles can happen sometimes...
 
 - BTC: bc1ququ5vxy3yfpqn6dd5p4xfnk35ljfgem2jf2tf2
 - LTC: LL6dMuxLCWy6rB7h3AHCR5nkvdV6SoFNEk
@@ -318,4 +320,4 @@ To be perfectly honest, my initial goal was simply to test and dissect the OpenR
 - DOGE: DFPrdKUtYJS8jqPpmECypdQPumCykK5jHp
 - XMR: 4AEJf5HiQkiiafQRzV2gmfJjUHEKUSgetjb7bqn7fQQ7GfJe21nmE29GMBhV1z6pvC45yVKVkvAH97cp4bkPpJHH4m3gZfQ
 
-Enjoy :)
+**Enjoy :)**
